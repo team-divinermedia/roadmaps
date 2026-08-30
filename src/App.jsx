@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { defaultWabaPhases } from "./wabaPhasesData";
+import { first10CustomersPhases } from "./first10PhasesData";
 
 // Full 160 Tasks across 10 Phases (Phase 0 to Phase 9)
 export const fullGtmPhases = [
@@ -459,6 +460,14 @@ export const fullGtmPhases = [
 // Default Initial Projects Registry
 const defaultProjects = [
   {
+    id: "proj-first-10-cust",
+    name: "Roadmap to First 10 Paying Customers",
+    description: "56-task tactical execution roadmap (Pre-conditions + Phase 1 to Phase 6) for WhatsApp Lead Response Engine.",
+    category: "Customer Acquisition",
+    color: "#F59E0B",
+    phases: first10CustomersPhases
+  },
+  {
     id: "proj-b2b-gtm",
     name: "B2B SaaS Launch Execution Playbook",
     description: "Full 160-task 10-phase GTM execution strategy for B2B SaaS product launch.",
@@ -486,8 +495,8 @@ export default function App() {
       const saved = localStorage.getItem("b2b_gtm_projects_v3");
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Ensure GTM project has all 160 tasks and WABA project has all 264 tasks
-        return parsed.map((p) => {
+        // Ensure standard project datasets maintain complete task counts
+        let updated = parsed.map((p) => {
           if (p.id === "proj-b2b-gtm") {
             const count = (p.phases || []).flatMap((ph) => (ph.sections || []).flatMap((s) => s.tasks)).length;
             if (count < 160) {
@@ -500,8 +509,26 @@ export default function App() {
               return { ...p, phases: defaultWabaPhases };
             }
           }
+          if (p.id === "proj-first-10-cust") {
+            const count = (p.phases || []).flatMap((ph) => (ph.sections || []).flatMap((s) => s.tasks)).length;
+            if (count < 56) {
+              return { ...p, phases: first10CustomersPhases };
+            }
+          }
           return p;
         });
+
+        if (!updated.some((p) => p.id === "proj-first-10-cust")) {
+          updated.unshift({
+            id: "proj-first-10-cust",
+            name: "Roadmap to First 10 Paying Customers",
+            description: "56-task tactical execution roadmap (Pre-conditions + Phase 1 to Phase 6) for WhatsApp Lead Response Engine.",
+            category: "Customer Acquisition",
+            color: "#F59E0B",
+            phases: first10CustomersPhases
+          });
+        }
+        return updated;
       }
       return defaultProjects;
     } catch {
@@ -561,6 +588,13 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectCat, setNewProjectCat] = useState("Strategy");
+
+  // Bulk Import Project State
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [bulkImportName, setBulkImportName] = useState("");
+  const [bulkImportDesc, setBulkImportDesc] = useState("");
+  const [bulkImportCategory, setBulkImportCategory] = useState("Customer Acquisition");
+  const [bulkImportText, setBulkImportText] = useState("");
 
   // Drag and Drop State
   const [draggedSectionIdx, setDraggedSectionIdx] = useState(null);
@@ -744,6 +778,126 @@ export default function App() {
     setNewProjectDesc("");
     setIsCreatingProject(false);
     setViewMode("playbook");
+  };
+
+  const handleBulkImportProject = () => {
+    if (!bulkImportName.trim() || !bulkImportText.trim()) return;
+
+    let parsedPhases = [];
+
+    // Try parsing as JSON first
+    try {
+      const jsonContent = JSON.parse(bulkImportText);
+      if (Array.isArray(jsonContent)) {
+        parsedPhases = jsonContent;
+      } else if (jsonContent.phases && Array.isArray(jsonContent.phases)) {
+        parsedPhases = jsonContent.phases;
+      }
+    } catch {
+      // Parse plain text / markdown / bullet lines into phases and tasks
+      const lines = bulkImportText.split("\n").map((l) => l.trim()).filter(Boolean);
+      let currentPhase = null;
+      let currentSection = null;
+      let phaseCount = 0;
+
+      lines.forEach((line) => {
+        // Detect Phase headers
+        if (/^(phase|day|module|stage|part)\s*\d+/i.test(line) || /^#+\s*(phase|day|module|stage)/i.test(line)) {
+          if (currentPhase) {
+            if (currentSection && currentSection.tasks.length > 0) currentPhase.sections.push(currentSection);
+            parsedPhases.push(currentPhase);
+          }
+          phaseCount++;
+          currentPhase = {
+            id: phaseCount - 1,
+            label: `Phase ${phaseCount - 1}`,
+            title: line.replace(/^#+\s*/, "").trim(),
+            timeline: "Target Timeline",
+            color: ["#6366F1", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#3B82F6"][phaseCount % 6],
+            description: "Bulk imported phase tasks.",
+            sections: []
+          };
+          currentSection = { title: "Tasks", tasks: [] };
+        } else if (/^(section|topic|category)[:\-]/i.test(line) || line.startsWith("##")) {
+          if (!currentPhase) {
+            currentPhase = {
+              id: 0,
+              label: "Phase 0",
+              title: "General Phase",
+              timeline: "Week 1",
+              color: "#6366F1",
+              description: "Imported tasks",
+              sections: []
+            };
+          }
+          if (currentSection && currentSection.tasks.length > 0) {
+            currentPhase.sections.push(currentSection);
+          }
+          currentSection = {
+            title: line.replace(/^#+\s*/, "").replace(/^(section|topic|category)[:\-]/i, "").trim(),
+            tasks: []
+          };
+        } else {
+          if (!currentPhase) {
+            currentPhase = {
+              id: 0,
+              label: "Phase 0",
+              title: "Phase 1: Roadmap Tasks",
+              timeline: "Week 1",
+              color: "#6366F1",
+              description: "Imported task list",
+              sections: []
+            };
+          }
+          if (!currentSection) {
+            currentSection = { title: "Tasks", tasks: [] };
+          }
+
+          const cleanText = line.replace(/^[\d\w\.\-\•\*\>\(\)]+\s*/, "").trim();
+          if (cleanText) {
+            currentSection.tasks.push({
+              id: `imp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              text: line,
+              owner: "Both",
+              description: "Imported task item"
+            });
+          }
+        }
+      });
+
+      if (currentPhase) {
+        if (currentSection && currentSection.tasks.length > 0) {
+          currentPhase.sections.push(currentSection);
+        }
+        parsedPhases.push(currentPhase);
+      }
+    }
+
+    if (parsedPhases.length === 0) {
+      alert("No valid tasks detected. Please enter lines of tasks.");
+      return;
+    }
+
+    const newProjId = `proj-imp-${Date.now()}`;
+    const totalCount = parsedPhases.flatMap((p) => p.sections || []).flatMap((s) => s.tasks).length;
+    const newProj = {
+      id: newProjId,
+      name: bulkImportName.trim(),
+      description: bulkImportDesc.trim() || `Imported task list containing ${totalCount} tasks.`,
+      category: bulkImportCategory,
+      color: "#EC4899",
+      phases: parsedPhases
+    };
+
+    setProjects((prev) => [...prev, newProj]);
+    setActiveProjectId(newProjId);
+    setActivePhase(0);
+    setIsBulkImporting(false);
+    setBulkImportName("");
+    setBulkImportDesc("");
+    setBulkImportText("");
+    setViewMode("playbook");
+    confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
   };
 
   const handleDuplicateProject = (projId) => {
@@ -1336,19 +1490,132 @@ export default function App() {
               </p>
             </div>
 
-            <button
-              onClick={() => setIsCreatingProject(true)}
-              style={{
-                padding: "10px 20px", borderRadius: 8, border: "none",
-                background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                color: "#FFFFFF", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 8,
-                boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)"
-              }}
-            >
-              <Plus size={16} /> Create New Project
-            </button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => { setIsBulkImporting(true); setIsCreatingProject(false); }}
+                style={{
+                  padding: "10px 18px", borderRadius: 8,
+                  border: `1.5px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                  background: darkTheme ? "#1E293B" : "#FFFFFF",
+                  color: darkTheme ? "#F8FAFC" : "#0F172A",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 8,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                }}
+              >
+                <Download size={15} style={{ transform: "rotate(180deg)" }} /> Bulk Import Tasks
+              </button>
+              <button
+                onClick={() => { setIsCreatingProject(true); setIsBulkImporting(false); }}
+                style={{
+                  padding: "10px 20px", borderRadius: 8, border: "none",
+                  background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                  color: "#FFFFFF", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 8,
+                  boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)"
+                }}
+              >
+                <Plus size={16} /> Create New Project
+              </button>
+            </div>
           </div>
+
+          {/* BULK IMPORT FORM DRAWER */}
+          {isBulkImporting && (
+            <div style={{
+              padding: "22px 26px", borderRadius: 12,
+              border: `1.5px solid #EC4899`,
+              background: darkTheme ? "#1E293B" : "#FFFFFF",
+              boxShadow: "0 8px 24px rgba(236, 72, 153, 0.2)",
+              marginBottom: 36
+            }} className="animate-fade-in">
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px", color: "#EC4899", display: "flex", alignItems: "center", gap: 8 }}>
+                <Download size={18} style={{ transform: "rotate(180deg)" }} /> Bulk Upload & Convert Task List into Active Project
+              </h3>
+              <p style={{ fontSize: 12.5, color: darkTheme ? "#94A3B8" : "#64748B", margin: "0 0 16px" }}>
+                Paste 10 to 100+ tasks directly from your Word doc, Markdown, or bullet list. The parser will automatically format headers, sections, and checkable tasks!
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <input
+                    type="text"
+                    placeholder="Project Name (e.g. First 10 Customers Playbook)..."
+                    value={bulkImportName}
+                    onChange={(e) => setBulkImportName(e.target.value)}
+                    style={{
+                      flex: 2, padding: "9px 14px", borderRadius: 8,
+                      border: `1px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                      background: darkTheme ? "#0F172A" : "#F8FAFC",
+                      color: darkTheme ? "#F8FAFC" : "#0F172A", fontSize: 13, outline: "none"
+                    }}
+                  />
+                  <select
+                    value={bulkImportCategory}
+                    onChange={(e) => setBulkImportCategory(e.target.value)}
+                    style={{
+                      flex: 1, padding: "9px 14px", borderRadius: 8,
+                      border: `1px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                      background: darkTheme ? "#0F172A" : "#F8FAFC",
+                      color: darkTheme ? "#F8FAFC" : "#0F172A", fontSize: 13, outline: "none"
+                    }}
+                  >
+                    <option value="Customer Acquisition">Customer Acquisition</option>
+                    <option value="Go-To-Market">Go-To-Market</option>
+                    <option value="Lead Generation">Lead Generation</option>
+                    <option value="Strategy">Strategy</option>
+                    <option value="Product Growth">Product Growth</option>
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Brief Description or Goal (Optional)..."
+                  value={bulkImportDesc}
+                  onChange={(e) => setBulkImportDesc(e.target.value)}
+                  style={{
+                    padding: "9px 14px", borderRadius: 8,
+                    border: `1px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                    background: darkTheme ? "#0F172A" : "#F8FAFC",
+                    color: darkTheme ? "#F8FAFC" : "#0F172A", fontSize: 13, outline: "none"
+                  }}
+                />
+                <textarea
+                  rows={8}
+                  placeholder={`Paste all your tasks here (e.g. 56 tasks from Word / Docx / TXT / JSON)...\n\nExample:\nPhase 1: Foundation\n- Task 1: Complete setup\n- Task 2: Build ROI calculator\nPhase 2: Outreach\n- Task 3: Send initial emails`}
+                  value={bulkImportText}
+                  onChange={(e) => setBulkImportText(e.target.value)}
+                  style={{
+                    width: "100%", padding: "12px 14px", borderRadius: 8,
+                    border: `1px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                    background: darkTheme ? "#0F172A" : "#F8FAFC",
+                    color: darkTheme ? "#F8FAFC" : "#0F172A",
+                    fontSize: 12.5, fontFamily: "monospace", outline: "none", resize: "vertical"
+                  }}
+                />
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+                  <button
+                    onClick={() => setIsBulkImporting(false)}
+                    style={{
+                      padding: "8px 16px", borderRadius: 6, border: `1px solid ${darkTheme ? "#334155" : "#CBD5E1"}`,
+                      background: "transparent", color: darkTheme ? "#94A3B8" : "#64748B", fontSize: 12.5, fontWeight: 600, cursor: "pointer"
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkImportProject}
+                    disabled={!bulkImportName.trim() || !bulkImportText.trim()}
+                    style={{
+                      padding: "8px 20px", borderRadius: 6, border: "none",
+                      background: (!bulkImportName.trim() || !bulkImportText.trim()) ? "#CBD5E1" : "linear-gradient(135deg, #EC4899, #F43F5E)",
+                      color: "#FFFFFF", fontSize: 12.5, fontWeight: 700, cursor: (!bulkImportName.trim() || !bulkImportText.trim()) ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    Import & Launch Project
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* CREATE PROJECT FORM DRAWER */}
           {isCreatingProject && (
